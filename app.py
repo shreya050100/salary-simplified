@@ -49,13 +49,13 @@ with st.container():
 
 # --- File Upload (optional) ---
 uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
-if uploaded_file.name.endswith(".csv"):
-        try:
-            df = pd.read_csv(uploaded_file, encoding="utf-8")
-        except UnicodeDecodeError:
-            df = pd.read_csv(uploaded_file, encoding="ISO-8859-1")
-
-        st.success("📄 Payslip Uploaded Successfully!")
+if uploaded_file is not None:
+    if uploaded_file.name.endswith(".csv"):
+        # Handle CSV parsing
+    elif uploaded_file.name.endswith(".pdf"):
+        # Handle PDF parsing (if supported)
+    else:
+        st.error("Unsupported file type. Please upload a CSV or PDF.")
 
         # Attempt to locate key salary components from the table (you may need to customize for your format)
         st.subheader("📋 Payslip Summary")
