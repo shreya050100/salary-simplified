@@ -1,132 +1,121 @@
 import streamlit as st
-import pandas as pd
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Salary Simplified", page_icon="💰")
+# Page configuration
+st.set_page_config(page_title="Salary Simplified", page_icon="💰", layout="centered")
 
-st.title("💰 Salary Simplified – Understand Your Payslip & Tax Liability")
-st.markdown("This tool helps you break down your salary, compare Old vs New tax regimes, and estimate your take-home.")
+# App header
+with st.container():
+    st.markdown("<h1 style='text-align: center;'>💰 Salary Simplified – Understand Your Payslip & Tax Liability</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>This tool helps you break down your salary, compare Old vs New tax regimes, and estimate your take-home.</p>", unsafe_allow_html=True)
 
-with st.expander("📥 Enter Your Monthly Salary Details"):
-    basic = st.number_input("Basic Pay", min_value=0, value=30000)
-    metro = st.checkbox("🏙️ I live in a Metro City (for higher HRA exemption)", value=False)
-    auto_hra = round(0.5 * basic) if metro else round(0.4 * basic)
+# Sidebar inputs
+with st.sidebar:
+    st.header("📥 Enter Your Monthly Salary Details")
+    basic = st.number_input("Basic Pay", min_value=0)
+    
+    # Auto-calculated HRA
+    hra = 0.4 * basic
+    st.caption(f"HRA auto-calculated as 40% of Basic Pay: ₹{hra:,.0f}")
+    
+    special = st.number_input("Special Allowance", min_value=0)
+    bonus = st.number_input("Bonus / Variable Pay", min_value=0)
+    other = st.number_input("Other Income", min_value=0)
+    
+    epf = st.number_input("EPF Deduction (Monthly)", min_value=0)
+    prof_tax = st.number_input("Professional Tax (Monthly)", min_value=0)
+    
+    age = st.selectbox("Your Age Bracket", ["<60", "60-80", ">80"])
+    regime_choice = st.radio("Choose Tax Regime", ["Old", "New", "Compare Both"])
+    calculate = st.button("💡 Calculate Tax")
 
-    use_auto_hra = st.checkbox(f"🧮 Auto-calculate HRA ({'50%' if metro else '40%'} of Basic)", value=True)
-    hra = st.number_input("House Rent Allowance (HRA)", min_value=0, value=auto_hra if use_auto_hra else 0)
+# Main logic
+if calculate:
+    gross = 12 * (basic + hra + special + bonus + other)
+    deductions = 12 * (epf + prof_tax)
+    std_deduction = 50000
+    total_deductions = deductions + std_deduction
+    taxable_income = max(0, gross - total_deductions)
 
-    special = st.number_input("Special Allowance", min_value=0, value=5000)
-    bonus = st.number_input("Bonus / Variable Pay", min_value=0, value=2000)
-    other = st.number_input("Other Income", min_value=0, value=1000)
+    def tax_old(income):
+        tax = 0
+        slabs = {
+            "<60": [(250000, 0), (500000, 0.05), (1000000, 0.2), (float('inf'), 0.3)],
+            "60-80": [(300000, 0), (500000, 0.05), (1000000, 0.2), (float('inf'), 0.3)],
+            ">80": [(500000, 0), (1000000, 0.2), (float('inf'), 0.3)]
+        }
+        prev = 0
+        for limit, rate in slabs[age]:
+            if income > limit:
+                tax += (limit - prev) * rate
+                prev = limit
+            else:
+                tax += (income - prev) * rate
+                break
+        return round(tax)
 
-with st.expander("📉 Monthly Deductions"):
-    epf = st.number_input("EPF Contribution", min_value=0, value=1800)
-    prof_tax = st.number_input("Professional Tax", min_value=0, value=200)
+    def tax_new(income):
+        slabs = [(300000, 0), (600000, 0.05), (900000, 0.1),
+                 (1200000, 0.15), (1500000, 0.2), (float('inf'), 0.3)]
+        prev = 0
+        tax = 0
+        for limit, rate in slabs:
+            if income > limit:
+                tax += (limit - prev) * rate
+                prev = limit
+            else:
+                tax += (income - prev) * rate
+                break
+        return round(tax)
 
-st.markdown("### 📊 Choose Your Tax Regime & Age Bracket")
-col1, col2 = st.columns(2)
-with col1:
-    age = st.selectbox("Your Age", ["<60", "60-80", ">80"])
-with col2:
-    regime_choice = st.radio("Tax Regime", ["Old", "New", "Compare Both"])
+    st.subheader("📊 Breakdown")
 
-uploaded_file = st.file_uploader("📤 Upload your salary slip (.csv)", type=["csv"])
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.success("File Uploaded Successfully!")
-    st.dataframe(df.head())
+    col1, col2 = st.columns(2)
+    col1.metric("Gross Annual Income", f"₹{gross:,.0f}")
+    col2.metric("Taxable Income", f"₹{taxable_income:,.0f}")
 
-st.info("👈 Enter values above and click '💡 Calculate Tax' to see your results.")
+    if regime_choice == "Old":
+        tax = tax_old(taxable_income)
+        st.success(f"Estimated Tax under Old Regime: ₹{tax:,.0f}")
+    elif regime_choice == "New":
+        tax = tax_new(gross)
+        st.success(f"Estimated Tax under New Regime: ₹{tax:,.0f}")
+    else:
+        tax_old_val = tax_old(taxable_income)
+        tax_new_val = tax_new(gross)
+        st.info(f"Old Regime: ₹{tax_old_val:,.0f} | New Regime: ₹{tax_new_val:,.0f}")
+        better = "Old" if tax_old_val < tax_new_val else "New"
+        st.success(f"✅ Better Option: **{better} Regime**")
 
-_, center, _ = st.columns([1, 2, 1])
-with center:
-    if st.button("💡 Calculate Tax"):
-        gross = 12 * (basic + hra + special + bonus + other)
-        deductions = 12 * (epf + prof_tax)
-        std_deduction = 50000
-        total_deductions = deductions + std_deduction
-        taxable_income = max(0, gross - total_deductions)
+        # Bar Chart
+        fig, ax = plt.subplots()
+        ax.bar(["Old Regime", "New Regime"], [tax_old_val, tax_new_val], color=["green", "orange"])
+        ax.set_ylabel("Tax Amount (₹)")
+        ax.set_title("Old vs New Regime Tax Comparison")
+        st.pyplot(fig)
+        tax = min(tax_old_val, tax_new_val)
 
-        def tax_old(income):
-            tax = 0
-            slabs = {
-                "<60": [(250000, 0), (500000, 0.05), (1000000, 0.2), (float('inf'), 0.3)],
-                "60-80": [(300000, 0), (500000, 0.05), (1000000, 0.2), (float('inf'), 0.3)],
-                ">80": [(500000, 0), (1000000, 0.2), (float('inf'), 0.3)]
-            }
-            prev = 0
-            for limit, rate in slabs[age]:
-                if income > limit:
-                    tax += (limit - prev) * rate
-                    prev = limit
-                else:
-                    tax += (income - prev) * rate
-                    break
-            return round(tax)
+    take_home = gross - tax - deductions
 
-        def tax_new(income):
-            slabs = [(300000, 0), (600000, 0.05), (900000, 0.1),
-                     (1200000, 0.15), (1500000, 0.2), (float('inf'), 0.3)]
-            prev = 0
-            tax = 0
-            for limit, rate in slabs:
-                if income > limit:
-                    tax += (limit - prev) * rate
-                    prev = limit
-                else:
-                    tax += (income - prev) * rate
-                    break
-            return round(tax)
+    st.subheader("💸 Estimated Take-Home")
+    st.write(f"**Annual Take-Home Pay:** ₹{take_home:,.0f}")
+    st.write(f"**Monthly Take-Home Pay:** ₹{take_home / 12:,.0f}")
 
-        st.subheader("📊 Salary & Tax Breakdown")
-        st.write(f"**Gross Annual Income:** ₹{gross:,.0f}")
-        st.write(f"**Total Deductions (incl. Std ₹50K):** ₹{total_deductions:,.0f}")
-        st.write(f"**Taxable Income:** ₹{taxable_income:,.0f}")
+    # Expanders for extra help
+    with st.expander("💡 Money-Saving Tips"):
+        st.markdown("""
+        - Invest in **Section 80C** instruments (ELSS, PPF, etc.)
+        - Maximize **EPF** and **NPS** contributions
+        - Use **HRA exemptions** if you're renting
+        - Consider **medical insurance** (Section 80D)
+        """)
 
-        if regime_choice == "Old":
-            tax = tax_old(taxable_income)
-            st.success(f"Estimated Tax under Old Regime: ₹{tax:,.0f}")
-        elif regime_choice == "New":
-            tax = tax_new(gross)
-            st.success(f"Estimated Tax under New Regime: ₹{tax:,.0f}")
-        else:
-            tax_old_val = tax_old(taxable_income)
-            tax_new_val = tax_new(gross)
-            st.info(f"Old Regime: ₹{tax_old_val:,.0f} | New Regime: ₹{tax_new_val:,.0f}")
-            better = "Old" if tax_old_val < tax_new_val else "New"
-            st.success(f"✅ Better Option: **{better} Regime**")
-            tax = min(tax_old_val, tax_new_val)
+    with st.expander("📘 How to Read Your Salary Slip?"):
+        st.markdown("""
+        - **Basic Pay**: Fixed core salary
+        - **HRA**: For renting house accommodation (exemptions available)
+        - **Special Allowance**: Miscellaneous compensation
+        - **EPF**: Mandatory employee retirement contribution
+        - **Professional Tax**: State-based deduction
+        """)
 
-            # Chart
-            fig, ax = plt.subplots()
-            ax.bar(["Old Regime", "New Regime"], [tax_old_val, tax_new_val], color=["#4CAF50", "#FF9800"])
-            ax.set_ylabel("Tax Amount (₹)")
-            ax.set_title("Old vs New Regime Tax Comparison")
-            st.pyplot(fig)
-
-        take_home = gross - tax - deductions
-        st.subheader("💸 Estimated Take-Home")
-        st.write(f"**Annual Take-Home Pay:** ₹{take_home:,.0f}")
-        st.write(f"**Monthly Take-Home Pay:** ₹{take_home/12:,.0f}")
-
-        with st.expander("💡 Money-Saving Tips"):
-            st.markdown("""
-            - Invest in **80C options**: ELSS, PPF, Term Insurance
-            - Use **80D** for health insurance (self & parents)
-            - Consider **NPS** for additional ₹50K deduction
-            - Track expenses with apps like Jupiter, Fi, Walnut
-            """)
-
-with st.expander("🧾 How to Read Your Salary Slip?"):
-    st.markdown("""
-    - **Basic Pay**: Core salary used for PF & gratuity calculations.
-    - **HRA**: House Rent Allowance — partially tax-free if you pay rent. Usually:
-        - 40% of Basic Pay for non-metro cities
-        - 50% of Basic Pay for metro cities (Mumbai, Delhi, Chennai, Kolkata, Bengaluru, Hyderabad)
-    - **Special Allowance**: Fully taxable portion of salary.
-    - **Bonus**: May be variable or performance-based; taxable.
-    - **Deductions**:
-      - **EPF**: Contributes to your retirement fund (12% basic).
-      - **Professional Tax**: State-based small tax deducted monthly.
-      - **Income Tax**: Based on regime selected and income.
-    """)
