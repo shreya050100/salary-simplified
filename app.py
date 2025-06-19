@@ -79,3 +79,4 @@ if st.sidebar.button("💡 Calculate Tax"):
     st.write(f"**Annual Take-Home Pay:** ₹{take_home:,.0f}")
     st.write(f"**Monthly Take-Home Pay:** ₹{take_home/12:,.0f}")
 
+
