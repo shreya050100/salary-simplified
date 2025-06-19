@@ -50,57 +50,43 @@ with st.container():
 # --- File Upload (optional) ---
 uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
 
-if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
         try:
-            df = pd.read_csv(uploaded_file, encoding='utf-8')
+            df = pd.read_csv(uploaded_file, encoding="utf-8")
         except UnicodeDecodeError:
-            df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
-        st.success("CSV File Uploaded Successfully!")
-        st.dataframe(df.head())
+            df = pd.read_csv(uploaded_file, encoding="ISO-8859-1")
 
-    elif uploaded_file.name.endswith(".pdf"):
-        st.success("PDF File Uploaded Successfully!")
-        with pdfplumber.open(uploaded_file) as pdf:
-            text = ""
-            for page in pdf.pages:
-                text += page.extract_text() + "\n"
-        st.text_area("📄 Extracted Text from PDF", text, height=300)
-# After reading the CSV and displaying df.head(), extract highlights
-if uploaded_file.name.endswith(".csv"):
-    try:
-        df = pd.read_csv(uploaded_file, encoding='utf-8')
-    except UnicodeDecodeError:
-        df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
-    
-    st.success("✅ File Uploaded Successfully!")
+        st.success("📄 Payslip Uploaded Successfully!")
 
-    # Optional preview
-    with st.expander("📄 View Uploaded Data"):
-        st.dataframe(df.head())
+        # Attempt to locate key salary components from the table (you may need to customize for your format)
+        st.subheader("📋 Payslip Summary")
 
-    # Extract and show salary summary (replace with exact column names from your CSV)
-    st.markdown("### 📌 Payslip Summary")
-    st.markdown("""
-    <div style="background-color:#1e1e1e;padding:20px;border-radius:10px">
-    <h4 style='color:#ffcc00'>👤 Name:</h4>
-    <p style='margin-left:10px;'>Shreya Verma</p>
+        card_style = """
+        <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
+            <h4 style="color:white;margin:0;padding:0;">{label}</h4>
+            <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {value}</p>
+        </div>
+        """
 
-    <h4 style='color:#ffcc00'>💼 Designation:</h4>
-    <p style='margin-left:10px;'>Global Marketing Associate</p>
+        cols = st.columns(3)
 
-    <h4 style='color:#ffcc00'>🏦 Bank A/C:</h4>
-    <p style='margin-left:10px;'>HDFC - ****7222</p>
+        # Dummy logic to show structure — ideally use your df.loc/iloc parsing
+        try:
+            payslip_data = {
+                "Basic Pay": df.iloc[4, 0].split()[-1].replace(",", ""),  # crude parse; adapt
+                "HRA": df.iloc[4, 1].split()[0].replace(",", ""),
+                "Special Allowance": df.iloc[4, 2].split()[0].replace(",", ""),
+                "Medical Allowance": df.iloc[4, 3].split()[0].replace(",", ""),
+                "Total Earnings": df.iloc[4, -1].replace(",", "")
+            }
 
-    <h4 style='color:#ffcc00'>🧾 Earnings:</h4>
-    <p style='margin-left:10px;'>Basic: ₹23,269 | HRA: ₹11,635 | Conv. Allow.: ₹800 | Medical: ₹1,250 | Other: ₹9,344</p>
+            for idx, (label, value) in enumerate(payslip_data.items()):
+                with cols[idx % 3]:
+                    st.markdown(card_style.format(label=label, value=value), unsafe_allow_html=True)
 
-    <h4 style='color:#ffcc00'>💸 Deductions:</h4>
-    <p style='margin-left:10px;'>EPF: ₹2,792 | PT: ₹200 | Other: ₹0</p>
-
-    <h4 style='color:#4CAF50'>🟢 Net Take-Home: ₹67,480</h4>
-    </div>
-    """, unsafe_allow_html=True)
+        except Exception as e:
+            st.error("⚠️ Unable to extract structured payslip values automatically.")
+            st.dataframe(df.head())
 
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
