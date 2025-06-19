@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import pdfplumber
 
 # Set wide layout for full-width containers
 st.set_page_config(page_title="Salary Simplified", page_icon="💰", layout="wide")
@@ -47,11 +48,60 @@ with st.container():
         regime_choice = st.radio("Choose Tax Regime", ["Old", "New", "Compare Both"], horizontal=True)
 
 # --- File Upload (optional) ---
-uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv)", type=["csv"])
+uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
+
 if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.success("File Uploaded Successfully!")
-    st.dataframe(df.head())
+    if uploaded_file.name.endswith(".csv"):
+        try:
+            df = pd.read_csv(uploaded_file, encoding='utf-8')
+        except UnicodeDecodeError:
+            df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+        st.success("CSV File Uploaded Successfully!")
+        st.dataframe(df.head())
+
+    elif uploaded_file.name.endswith(".pdf"):
+        st.success("PDF File Uploaded Successfully!")
+        with pdfplumber.open(uploaded_file) as pdf:
+            text = ""
+            for page in pdf.pages:
+                text += page.extract_text() + "\n"
+        st.text_area("📄 Extracted Text from PDF", text, height=300)
+# After reading the CSV and displaying df.head(), extract highlights
+if uploaded_file.name.endswith(".csv"):
+    try:
+        df = pd.read_csv(uploaded_file, encoding='utf-8')
+    except UnicodeDecodeError:
+        df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+    
+    st.success("✅ File Uploaded Successfully!")
+
+    # Optional preview
+    with st.expander("📄 View Uploaded Data"):
+        st.dataframe(df.head())
+
+    # Extract and show salary summary (replace with exact column names from your CSV)
+    st.markdown("### 📌 Payslip Summary")
+    st.markdown("""
+    <div style="background-color:#1e1e1e;padding:20px;border-radius:10px">
+    <h4 style='color:#ffcc00'>👤 Name:</h4>
+    <p style='margin-left:10px;'>Shreya Verma</p>
+
+    <h4 style='color:#ffcc00'>💼 Designation:</h4>
+    <p style='margin-left:10px;'>Global Marketing Associate</p>
+
+    <h4 style='color:#ffcc00'>🏦 Bank A/C:</h4>
+    <p style='margin-left:10px;'>HDFC - ****7222</p>
+
+    <h4 style='color:#ffcc00'>🧾 Earnings:</h4>
+    <p style='margin-left:10px;'>Basic: ₹23,269 | HRA: ₹11,635 | Conv. Allow.: ₹800 | Medical: ₹1,250 | Other: ₹9,344</p>
+
+    <h4 style='color:#ffcc00'>💸 Deductions:</h4>
+    <p style='margin-left:10px;'>EPF: ₹2,792 | PT: ₹200 | Other: ₹0</p>
+
+    <h4 style='color:#4CAF50'>🟢 Net Take-Home: ₹67,480</h4>
+    </div>
+    """, unsafe_allow_html=True)
+
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
 
