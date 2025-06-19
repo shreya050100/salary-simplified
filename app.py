@@ -16,6 +16,8 @@ epf = st.sidebar.number_input("EPF Deduction (Monthly)", min_value=0)
 prof_tax = st.sidebar.number_input("Professional Tax (Monthly)", min_value=0)
 age = st.sidebar.selectbox("Your Age Bracket", ["<60", "60-80", ">80"])
 regime_choice = st.sidebar.radio("Choose Tax Regime", ["Old", "New", "Compare Both"])
+st.info("👈 Enter values and click '💡 Calculate Tax' to see your results.")
+
 
 if st.sidebar.button("💡 Calculate Tax"):
     gross = 12 * (basic + hra + special + bonus + other)
