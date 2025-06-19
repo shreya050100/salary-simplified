@@ -49,8 +49,7 @@ with st.container():
 
 # --- File Upload (optional) ---
 uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
-
-    if uploaded_file.name.endswith(".csv"):
+if uploaded_file.name.endswith(".csv"):
         try:
             df = pd.read_csv(uploaded_file, encoding="utf-8")
         except UnicodeDecodeError:
