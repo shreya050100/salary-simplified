@@ -54,16 +54,18 @@ if uploaded_file is not None:
         with pdfplumber.open(uploaded_file) as pdf:
             text = "".join(page.extract_text() for page in pdf.pages)
             st.markdown("### 🔢 Extracted Payslip Text")
-            st.code(text[:1000])
 
             if mask_data:
-                text = re.sub(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", "****PAN****", text)
-                text = re.sub(r"\b\d{12}\b", "****AADHAAR****", text)
-                text = re.sub(r"\b\d{10,14}\b", "****ACCT****", text)
-                text = re.sub(r"\bUAN\s*\d+\b", "UAN ****", text)
+                text = re.sub(r"(?i)(PAN\s*:?\s*[A-Z]{5}[0-9]{4}[A-Z])", "PAN: ****", text)
+                text = re.sub(r"(?i)(UAN\s*:?\s*\d{10,15})", "UAN: ****", text)
+                text = re.sub(r"(?i)(Bank Account No\s*:?\s*\d{9,20})", "Bank Account No: ****", text)
+                text = re.sub(r"(?i)(Employee Name\s*:?\s*.+)", "Employee Name: ****", text)
+                text = re.sub(r"(?i)(Provident Fund No\s*:?\s*\w+)", "Provident Fund No: ****", text)
+
+            st.code(text[:1500])
 
             def extract_amount(label):
-                pattern = rf"{label}\\s+(\\d{{1,3}}(,?\\d{{3}})*(\\.\\d{{2}})?)"
+                pattern = rf"{label}\s+(\d{{1,3}}(?:,\d{{3}})*(?:\.\d{{2}})?)"
                 match = re.search(pattern, text)
                 return float(match.group(1).replace(",", "")) if match else 0
 
@@ -81,13 +83,13 @@ if uploaded_file is not None:
             card_style = """
             <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
                 <h4 style="color:white;margin:0;padding:0;">{label}</h4>
-                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {value}</p>
+                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">{value}</p>
             </div>
             """
             cols = st.columns(3)
             for idx, (label, value) in enumerate(payslip_data.items()):
                 with cols[idx % 3]:
-                    masked = "*"*6 if mask_data else f"{value:,.0f}"
+                    masked = "******" if mask_data else f"₹{value:,.0f}"
                     st.markdown(card_style.format(label=label, value=masked), unsafe_allow_html=True)
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
@@ -106,8 +108,11 @@ if st.button("💡 Calculate Tax"):
     else:
         st.info("✍️ Using manually entered salary values.")
 
-    gross = 12 * (basic + hra + special + bonus + other)
-    deductions = 12 * (epf + prof_tax)
+    # Monthly based calculations
+    monthly_gross = basic + hra + special + bonus + other
+    monthly_deductions = epf + prof_tax
+    gross = monthly_gross * 12
+    deductions = monthly_deductions * 12
     std_deduction = 50000
     total_deductions = deductions + std_deduction
     taxable_income = max(0, gross - total_deductions)
