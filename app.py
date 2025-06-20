@@ -46,57 +46,51 @@ with col2:
 
 # --- File Upload ---
 payslip_data = None
-uploaded_file = st.file_uploader("📄 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
+net_salary_from_payslip = None
+uploaded_file = st.file_uploader("📄 Upload Salary Slip (.pdf)", type=["pdf"])
 mask_data = st.toggle("🔒 Mask Sensitive Info", value=True)
 
-if uploaded_file is not None:
-    if uploaded_file.name.endswith(".pdf"):
-        with pdfplumber.open(uploaded_file) as pdf:
-            text = "".join(page.extract_text() for page in pdf.pages)
-            st.markdown("### 🔢 Extracted Payslip Text")
+if uploaded_file:
+    with pdfplumber.open(uploaded_file) as pdf:
+        text = "".join(page.extract_text() for page in pdf.pages)
 
-            if mask_data:
-                text = re.sub(r"(?i)(PAN\s*:?\s*[A-Z]{5}[0-9]{4}[A-Z])", "PAN: ****", text)
-                text = re.sub(r"(?i)(UAN\s*:?\s*\d{10,15})", "UAN: ****", text)
-                text = re.sub(r"(?i)(Bank Account No\s*:?\s*\d{9,20})", "Bank Account No: ****", text)
-                text = re.sub(r"(?i)(Employee Name\s*:?\s*.+)", "Employee Name: ****", text)
-                text = re.sub(r"(?i)(Provident Fund No\s*:?\s*\w+)", "Provident Fund No: ****", text)
+        if mask_data:
+            text = re.sub(r"(?i)(PAN\s*:?.*)", "PAN: ****", text)
+            text = re.sub(r"(?i)(UAN\s*:?.*)", "UAN: ****", text)
+            text = re.sub(r"(?i)(Bank Account No\s*:?.*)", "Bank Account No: ****", text)
+            text = re.sub(r"(?i)(Employee Name\s*:?.*)", "Employee Name: ****", text)
+            text = re.sub(r"(?i)(Provident Fund No\s*:?.*)", "Provident Fund No: ****", text)
 
-            st.code(text[:1500])
+        st.markdown("### 📄 Extracted Payslip Text")
+        st.code(text[:1500])
 
-            def extract_amount(label):
+        def extract_amount(label):
+            try:
                 pattern = rf"{label}\s+(\d{{1,3}}(?:,\d{{3}})*(?:\.\d{{2}})?)"
                 match = re.search(pattern, text)
                 return float(match.group(1).replace(",", "")) if match else 0
+            except:
+                return 0
 
-            payslip_data = {
-                "Basic Pay": extract_amount("Basic"),
-                "HRA": extract_amount("House Rent Allowance"),
-                "Special Allowance": extract_amount("Special Allowance"),
-                "Bonus": 0,
-                "Other Income": extract_amount("Medical Allowance"),
-                "EPF": extract_amount("Provident Fund"),
-                "Professional Tax": extract_amount("Profession Tax")
-            }
+        payslip_data = {
+            "Basic Pay": extract_amount("Basic"),
+            "HRA": extract_amount("House Rent Allowance"),
+            "Special Allowance": extract_amount("Special Allowance"),
+            "Bonus": extract_amount("Bonus"),
+            "Other Income": extract_amount("Medical Allowance"),
+            "EPF": extract_amount("Provident Fund"),
+            "Professional Tax": extract_amount("Profession Tax")
+        }
 
-            st.markdown("### 📝 Extracted Payslip Summary")
-            card_style = """
-            <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
-                <h4 style="color:white;margin:0;padding:0;">{label}</h4>
-                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">{value}</p>
-            </div>
-            """
-            cols = st.columns(3)
-            for idx, (label, value) in enumerate(payslip_data.items()):
-                with cols[idx % 3]:
-                    masked = "******" if mask_data else f"₹{value:,.0f}"
-                    st.markdown(card_style.format(label=label, value=masked), unsafe_allow_html=True)
+        net_match = re.search(r"Net Salary\s*[:\-]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", text)
+        if net_match:
+            net_salary_from_payslip = float(net_match.group(1).replace(",", ""))
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
 
 # --- Tax Calculation ---
 if st.button("💡 Calculate Tax"):
-    if payslip_data:
+    if payslip_data and any(payslip_data.values()):
         st.info("📄 Using values from uploaded payslip.")
         basic = payslip_data["Basic Pay"]
         hra = payslip_data["HRA"]
@@ -108,7 +102,6 @@ if st.button("💡 Calculate Tax"):
     else:
         st.info("✍️ Using manually entered salary values.")
 
-    # Monthly based calculations
     monthly_gross = basic + hra + special + bonus + other
     monthly_deductions = epf + prof_tax
     gross = monthly_gross * 12
@@ -155,11 +148,11 @@ if st.button("💡 Calculate Tax"):
         tax = tax_old(taxable_income)
         st.success(f"Estimated Tax under Old Regime: ₹{tax:,.0f}")
     elif regime_choice == "New":
-        tax = tax_new(gross)
+        tax = tax_new(taxable_income)
         st.success(f"Estimated Tax under New Regime: ₹{tax:,.0f}")
     else:
         tax_old_val = tax_old(taxable_income)
-        tax_new_val = tax_new(gross)
+        tax_new_val = tax_new(taxable_income)
         better = "Old" if tax_old_val < tax_new_val else "New"
         st.info(f"Old Regime: ₹{tax_old_val:,.0f} | New Regime: ₹{tax_new_val:,.0f}")
         st.success(f"✅ Better Option: **{better} Regime**")
@@ -172,7 +165,13 @@ if st.button("💡 Calculate Tax"):
 
         tax = min(tax_old_val, tax_new_val)
 
-    take_home = gross - tax - deductions
+    # Use extracted net if available
+    if net_salary_from_payslip:
+        take_home = net_salary_from_payslip * 12
+        st.info("✅ Using net salary from uploaded payslip.")
+    else:
+        take_home = gross - tax - deductions
+
     st.markdown("### 💸 Estimated Take-Home")
     st.write(f"**Annual Take-Home Pay:** ₹{take_home:,.0f}")
     st.write(f"**Monthly Take-Home Pay:** ₹{take_home/12:,.0f}")
