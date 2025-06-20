@@ -54,9 +54,15 @@ if uploaded_file is not None:
             st.markdown("### 📄 Extracted Payslip Text")
             st.code(text[:1000])
 
+            # Mask sensitive information
+            text = re.sub(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", "****PAN****", text)
+            text = re.sub(r"\b\d{12}\b", "****AADHAAR****", text)
+            text = re.sub(r"\b\d{10,14}\b", "****ACCT****", text)
+            text = re.sub(r"\bUAN\s*\d+\b", "UAN ****", text)
+
             # Extract values from PDF using regex or fixed parsing
             def extract_amount(label):
-                pattern = rf"{label}\\s+(\\d{1,3}(,?\d{3})*(\.\d{{2}})?)"
+                pattern = rf"{label}\\s+(\\d{{1,3}}(,?\\d{{3}})*(\\.\\d{{2}})?)"
                 match = re.search(pattern, text)
                 return float(match.group(1).replace(",", "")) if match else 0
 
@@ -74,13 +80,13 @@ if uploaded_file is not None:
             card_style = """
             <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
                 <h4 style="color:white;margin:0;padding:0;">{label}</h4>
-                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {'*'*len(str(value))}</p>
+                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {'*'*6}</p>
             </div>
             """
             cols = st.columns(3)
             for idx, (label, value) in enumerate(payslip_data.items()):
                 with cols[idx % 3]:
-                    st.markdown(card_style.format(label=label, value=value), unsafe_allow_html=True)
+                    st.markdown(card_style.format(label=label), unsafe_allow_html=True)
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
 
