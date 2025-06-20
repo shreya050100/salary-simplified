@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import pdfplumber
+import re
 
 st.set_page_config(page_title="Salary Simplified", page_icon="💰", layout="wide")
 
@@ -47,42 +48,39 @@ with col2:
 payslip_data = None
 uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
 if uploaded_file is not None:
-    if uploaded_file.name.endswith(".csv"):
-        try:
-            df = pd.read_csv(uploaded_file, encoding="utf-8")
-        except UnicodeDecodeError:
-            df = pd.read_csv(uploaded_file, encoding="ISO-8859-1")
-        st.success("📄 Payslip Uploaded Successfully!")
-
-        st.markdown("### 🗂️ Extracted Payslip Summary")
-        payslip_data = {
-            "Basic Pay": 30000,
-            "HRA": 12000,
-            "Special Allowance": 5000,
-            "Bonus": 2000,
-            "Other Income": 1000,
-            "EPF": 1800,
-            "Professional Tax": 200
-        }
-        card_style = """
-        <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
-            <h4 style="color:white;margin:0;padding:0;">{label}</h4>
-            <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {value}</p>
-        </div>
-        """
-        cols = st.columns(3)
-        for idx, (label, value) in enumerate(payslip_data.items()):
-            with cols[idx % 3]:
-                st.markdown(card_style.format(label=label, value=value), unsafe_allow_html=True)
-
-    elif uploaded_file.name.endswith(".pdf"):
+    if uploaded_file.name.endswith(".pdf"):
         with pdfplumber.open(uploaded_file) as pdf:
             text = "".join(page.extract_text() for page in pdf.pages)
             st.markdown("### 📄 Extracted Payslip Text")
             st.code(text[:1000])
 
-    else:
-        st.error("Unsupported file type. Please upload a CSV or PDF.")
+            # Extract values from PDF using regex or fixed parsing
+            def extract_amount(label):
+                pattern = rf"{label}\\s+(\\d{1,3}(,?\d{3})*(\.\d{{2}})?)"
+                match = re.search(pattern, text)
+                return float(match.group(1).replace(",", "")) if match else 0
+
+            payslip_data = {
+                "Basic Pay": extract_amount("Basic"),
+                "HRA": extract_amount("House Rent Allowance"),
+                "Special Allowance": extract_amount("Special Allowance"),
+                "Bonus": 0,
+                "Other Income": extract_amount("Medical Allowance"),
+                "EPF": extract_amount("Provident Fund"),
+                "Professional Tax": extract_amount("Profession Tax")
+            }
+
+            st.markdown("### 🧾 Extracted Payslip Summary")
+            card_style = """
+            <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
+                <h4 style="color:white;margin:0;padding:0;">{label}</h4>
+                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {'*'*len(str(value))}</p>
+            </div>
+            """
+            cols = st.columns(3)
+            for idx, (label, value) in enumerate(payslip_data.items()):
+                with cols[idx % 3]:
+                    st.markdown(card_style.format(label=label, value=value), unsafe_allow_html=True)
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
 
