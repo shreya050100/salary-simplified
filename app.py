@@ -8,9 +8,18 @@ import google.generativeai as genai
 from PIL import Image
 
 # --- Setup Gemini ---
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Ensure this is set in Streamlit secrets or your env
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+
+def mask_text(text):
+    return re.sub(r'[A-Z0-9]{4,}', lambda m: '*' * len(m.group()), text)
+
+def extract_text_from_image(image_file):
+    image = Image.open(image_file)
+    model = genai.GenerativeModel('gemini-pro-vision')
+    response = model.generate_content(["Extract payslip details like Basic Pay, HRA, Allowances, EPF, Prof Tax, Net Salary", image])
+    return response.text
 
 st.set_page_config(page_title="Salary Simplified", page_icon="💰", layout="wide")
 
@@ -24,25 +33,55 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+if GEMINI_API_KEY:
+    st.success("✅ Gemini AI enabled: Smart suggestions & insights powered by Google")
+else:
+    st.warning("⚠️ Gemini AI not active. Please set your API key in Streamlit secrets.")
+
+# --- Upload Section ---
+st.markdown("### 📤 Upload Your Salary Slip")
+uploaded_file = st.file_uploader("Upload payslip (.pdf or image)", type=["pdf", "png", "jpg", "jpeg"])
+show_masked = st.toggle("🔒 Mask sensitive info", value=True)
+
+extracted_text = ""
+if uploaded_file:
+    if uploaded_file.name.endswith(".pdf"):
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page in pdf.pages:
+                extracted_text += page.extract_text() + "\n"
+    else:
+        extracted_text = extract_text_from_image(uploaded_file)
+
+    st.markdown("### 📄 Extracted Payslip Info")
+    if show_masked:
+        st.code(mask_text(extracted_text))
+    else:
+        st.code(extracted_text)
+
 # --- Inputs ---
 st.markdown("### 🗕️ Monthly Salary Inputs")
 col1, col2, col3 = st.columns(3)
-
 with col1:
     basic = st.number_input("Basic Pay", min_value=0, value=30000)
     metro = st.checkbox("🌇️ Metro City?", value=False)
     auto_hra = round(0.5 * basic) if metro else round(0.4 * basic)
     use_auto_hra = st.checkbox(f"🩻 Auto-calculate HRA ({'50%' if metro else '40%'} of Basic)", value=True)
-
 with col2:
     hra = st.number_input("House Rent Allowance (HRA)", min_value=0, value=auto_hra if use_auto_hra else 0)
     special = st.number_input("Special Allowance", min_value=0, value=5000)
     bonus = st.number_input("Bonus / Variable Pay", min_value=0, value=2000)
-
 with col3:
     other = st.number_input("Other Income", min_value=0, value=1000)
     epf = st.number_input("EPF Deduction (Monthly)", min_value=0, value=1800)
-    prof_tax = st.number_input("Professional Tax (Monthly)", min_value=0, value=200)
+
+    state_pt = {
+        "Maharashtra": 200, "Karnataka": 200, "Tamil Nadu": 208, "Gujarat": 200, "Delhi": 0,
+        "West Bengal": 200, "Kerala": 208, "Other": 0
+    }
+    selected_state = st.selectbox("🏛️ Select State", list(state_pt.keys()))
+    auto_prof_tax = state_pt[selected_state]
+    override_pt = st.checkbox("✏️ Manually enter Prof Tax?", value=False)
+    prof_tax = st.number_input("Professional Tax", min_value=0, value=auto_prof_tax if not override_pt else 0, disabled=not override_pt)
 
 # --- Regime Selection ---
 st.markdown("### ⚖️ Tax Settings")
@@ -50,69 +89,11 @@ col1, col2 = st.columns(2)
 with col1:
     age = st.selectbox("Your Age Bracket", ["<60", "60-80", ">80"])
 with col2:
-    regime_choice = st.radio("Choose Tax Regime", ["Old", "New", "Compare Both"], horizontal=True)
+    regime_choice = st.radio("Tax Regime", ["Old", "New", "Compare Both"], horizontal=True)
 
-# --- Upload PDF or Image ---
-payslip_data, net_salary_from_payslip = None, None
-uploaded_file = st.file_uploader("📄 Upload Salary Slip (.pdf or .png/.jpg)", type=["pdf", "png", "jpg"])
-mask_data = st.toggle("🔒 Mask Sensitive Info", value=True)
-
-if uploaded_file:
-    if uploaded_file.name.endswith(".pdf"):
-        with pdfplumber.open(uploaded_file) as pdf:
-            text = "".join(page.extract_text() for page in pdf.pages)
-    else:
-        if GEMINI_API_KEY:
-            image = Image.open(uploaded_file)
-            gemini_model = genai.GenerativeModel("gemini-pro-vision")
-            prompt = "Extract the following details from this payslip image: Basic Pay, HRA, Special Allowance, Bonus, Other Income, EPF, Professional Tax, Net Salary. Return result in plain text."
-            response = gemini_model.generate_content([prompt, image])
-            text = response.text
-        else:
-            st.error("🔐 Gemini API key missing. Please set it in secrets or env variable.")
-            text = ""
-
-    if mask_data:
-        for keyword in ["PAN", "UAN", "Bank Account No", "Employee Name", "Provident Fund No"]:
-            text = re.sub(rf"(?i)({keyword}\s*:?.*)", f"{keyword}: ****", text)
-
-    st.markdown("### 📄 Extracted Payslip Text")
-    st.code(text[:1500])
-
-    def extract_amount(label):
-        pattern = rf"{label}.*?(\d{{1,3}}(?:,\d{{3}})*(?:\.\d{{2}})?)"
-        match = re.search(pattern, text)
-        return float(match.group(1).replace(",", "")) if match else 0
-
-    payslip_data = {
-        "Basic Pay": extract_amount("Basic"),
-        "HRA": extract_amount("House Rent Allowance"),
-        "Special Allowance": extract_amount("Special Allowance"),
-        "Bonus": extract_amount("Bonus"),
-        "Other Income": extract_amount("Medical Allowance|Other Income"),
-        "EPF": extract_amount("Provident Fund"),
-        "Professional Tax": extract_amount("Profession Tax")
-    }
-
-    net_match = re.search(r"Net Salary\s*[:\-]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", text)
-    if net_match:
-        net_salary_from_payslip = float(net_match.group(1).replace(",", ""))
-
-st.info("🔍 Click '💡 Calculate Tax' to compute your estimate.")
+st.info("👉 Click below to calculate")
 
 if st.button("💡 Calculate Tax"):
-    if payslip_data and any(payslip_data.values()):
-        st.info("📄 Using values from uploaded payslip.")
-        basic = payslip_data["Basic Pay"]
-        hra = payslip_data["HRA"]
-        special = payslip_data["Special Allowance"]
-        bonus = payslip_data["Bonus"]
-        other = payslip_data["Other Income"]
-        epf = payslip_data["EPF"]
-        prof_tax = payslip_data["Professional Tax"]
-    else:
-        st.info("✍️ Using manually entered salary values.")
-
     gross = 12 * (basic + hra + special + bonus + other)
     deductions = 12 * (epf + prof_tax)
     std_deduction = 50000
@@ -136,7 +117,8 @@ if st.button("💡 Calculate Tax"):
         return round(tax)
 
     def tax_new(income):
-        slabs = [(300000, 0), (600000, 0.05), (900000, 0.1), (1200000, 0.15), (1500000, 0.2), (float('inf'), 0.3)]
+        slabs = [(300000, 0), (600000, 0.05), (900000, 0.1),
+                 (1200000, 0.15), (1500000, 0.2), (float('inf'), 0.3)]
         tax, prev = 0, 0
         for limit, rate in slabs:
             if income > limit:
@@ -154,62 +136,42 @@ if st.button("💡 Calculate Tax"):
 
     if regime_choice == "Old":
         tax = tax_old(taxable_income)
-        st.success(f"Estimated Tax under Old Regime: ₹{tax:,.0f}")
+        st.success(f"Tax (Old Regime): ₹{tax:,.0f}")
     elif regime_choice == "New":
-        tax = tax_new(taxable_income)
-        st.success(f"Estimated Tax under New Regime: ₹{tax:,.0f}")
+        tax = tax_new(gross)
+        st.success(f"Tax (New Regime): ₹{tax:,.0f}")
     else:
         tax_old_val = tax_old(taxable_income)
-        tax_new_val = tax_new(taxable_income)
+        tax_new_val = tax_new(gross)
         better = "Old" if tax_old_val < tax_new_val else "New"
-        st.info(f"Old Regime: ₹{tax_old_val:,.0f} | New Regime: ₹{tax_new_val:,.0f}")
-        st.success(f"✅ Better Option: **{better} Regime**")
+        st.info(f"Old: ₹{tax_old_val:,.0f}, New: ₹{tax_new_val:,.0f}")
+        st.success(f"✅ Better Regime: {better}")
 
         fig, ax = plt.subplots()
-        ax.bar(["Old Regime", "New Regime"], [tax_old_val, tax_new_val], color=["#4CAF50", "#FF9800"])
-        ax.set_title("Old vs New Regime Tax Comparison")
-        ax.set_ylabel("Tax Amount (₹)")
+        ax.bar(["Old", "New"], [tax_old_val, tax_new_val], color=["#4CAF50", "#FF9800"])
+        ax.set_ylabel("Tax (₹)")
         st.pyplot(fig)
 
-        tax = min(tax_old_val, tax_new_val)
-
-    if net_salary_from_payslip:
-        take_home = net_salary_from_payslip * 12
-        st.info("✅ Using net salary from uploaded payslip.")
-    else:
-        take_home = gross - tax - deductions
-
+    take_home = gross - tax - deductions
     st.markdown("### 💸 Estimated Take-Home")
-    st.write(f"**Annual Take-Home Pay:** ₹{take_home:,.0f}")
-    st.write(f"**Monthly Take-Home Pay:** ₹{take_home/12:,.0f}")
+    st.write(f"**Annual:** ₹{take_home:,.0f}")
+    st.write(f"**Monthly:** ₹{take_home/12:,.0f}")
 
-    with st.expander("💡 Money-Saving Tips"):
-        if GEMINI_API_KEY:
-            suggestion_prompt = f"Give 4 practical investment or money saving tips for a person earning ₹{take_home//12:.0f} monthly."
-            gemini = genai.GenerativeModel("gemini-pro")
-            suggestions = gemini.generate_content(suggestion_prompt).text
-            st.markdown(suggestions)
+    if GEMINI_API_KEY:
+        with st.expander("💡 Personalized Money Advice"):
+            model = genai.GenerativeModel("gemini-pro")
+            prompt = f"Suggest money-saving and investment tips for someone earning ₹{take_home//12} monthly."
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
 
-            user_prompt = st.text_input("🧠 Ask Gemini for tailored advice (e.g., tax saving, budgeting, investments):")
-            if user_prompt:
-                custom = gemini.generate_content(user_prompt).text
-                st.markdown(custom)
-        else:
-            st.markdown("""
-            - Invest in **80C options**: ELSS, PPF, Term Insurance  
-            - Use **80D** for health insurance (self & parents)  
-            - Consider **NPS** for additional ₹50K deduction  
-            - Track expenses with apps like Jupiter, Fi, Walnut  
-            """)
-
-# --- Guide Section ---
-with st.expander("📌 How to Read Your Salary Slip?"):
+with st.expander("🧾 How to Read Your Salary Slip?"):
     st.markdown("""
-    - **Basic Pay**: Core salary used for PF & gratuity  
-    - **HRA**: Tax benefit if rent is paid (40% or 50%)  
-    - **Special Allowance**: Fully taxable  
-    - **Bonus**: Performance-based and taxable  
-    - **EPF**: Retirement saving (12% of basic)  
-    - **Professional Tax**: Small state deduction  
-    - **Other Income**: Any additional payments outside fixed salary, e.g., reimbursements or medical allowance.
+    - **Basic Pay**: Core part of salary used for PF & gratuity.
+    - **HRA**: Tax-exempt if you pay rent (40–50% of basic).
+    - **Special Allowance**: Fully taxable.
+    - **Bonus**: Usually performance-linked; taxable.
+    - **Other Income**: Miscellaneous earnings (e.g., incentives, reimbursements).
+    - **EPF**: Statutory retirement contribution (12%).
+    - **Professional Tax**: State-specific small deduction.
+    - **Income Tax**: Computed under chosen regime.
     """)
