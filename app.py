@@ -17,14 +17,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Inputs ---
-st.markdown("### 📥 Monthly Salary Inputs")
+st.markdown("### 📅 Monthly Salary Inputs")
 col1, col2, col3 = st.columns(3)
 
 with col1:
     basic = st.number_input("Basic Pay", min_value=0, value=30000)
     metro = st.checkbox("🏙️ Metro City?", value=False)
     auto_hra = round(0.5 * basic) if metro else round(0.4 * basic)
-    use_auto_hra = st.checkbox(f"🧮 Auto-calculate HRA ({'50%' if metro else '40%'} of Basic)", value=True)
+    use_auto_hra = st.checkbox(f"🧻 Auto-calculate HRA ({'50%' if metro else '40%'} of Basic)", value=True)
 
 with col2:
     hra = st.number_input("House Rent Allowance (HRA)", min_value=0, value=auto_hra if use_auto_hra else 0)
@@ -46,21 +46,22 @@ with col2:
 
 # --- File Upload ---
 payslip_data = None
-uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
+uploaded_file = st.file_uploader("📄 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
+mask_data = st.toggle("🔒 Mask Sensitive Info", value=True)
+
 if uploaded_file is not None:
     if uploaded_file.name.endswith(".pdf"):
         with pdfplumber.open(uploaded_file) as pdf:
             text = "".join(page.extract_text() for page in pdf.pages)
-            st.markdown("### 📄 Extracted Payslip Text")
+            st.markdown("### 🔢 Extracted Payslip Text")
             st.code(text[:1000])
 
-            # Mask sensitive information
-            text = re.sub(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", "****PAN****", text)
-            text = re.sub(r"\b\d{12}\b", "****AADHAAR****", text)
-            text = re.sub(r"\b\d{10,14}\b", "****ACCT****", text)
-            text = re.sub(r"\bUAN\s*\d+\b", "UAN ****", text)
+            if mask_data:
+                text = re.sub(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", "****PAN****", text)
+                text = re.sub(r"\b\d{12}\b", "****AADHAAR****", text)
+                text = re.sub(r"\b\d{10,14}\b", "****ACCT****", text)
+                text = re.sub(r"\bUAN\s*\d+\b", "UAN ****", text)
 
-            # Extract values from PDF using regex or fixed parsing
             def extract_amount(label):
                 pattern = rf"{label}\\s+(\\d{{1,3}}(,?\\d{{3}})*(\\.\\d{{2}})?)"
                 match = re.search(pattern, text)
@@ -76,17 +77,18 @@ if uploaded_file is not None:
                 "Professional Tax": extract_amount("Profession Tax")
             }
 
-            st.markdown("### 🧾 Extracted Payslip Summary")
+            st.markdown("### 📝 Extracted Payslip Summary")
             card_style = """
             <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
                 <h4 style="color:white;margin:0;padding:0;">{label}</h4>
-                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {'*'*6}</p>
+                <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {value}</p>
             </div>
             """
             cols = st.columns(3)
             for idx, (label, value) in enumerate(payslip_data.items()):
                 with cols[idx % 3]:
-                    st.markdown(card_style.format(label=label), unsafe_allow_html=True)
+                    masked = "*"*6 if mask_data else f"{value:,.0f}"
+                    st.markdown(card_style.format(label=label, value=masked), unsafe_allow_html=True)
 
 st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
 
@@ -179,7 +181,7 @@ if st.button("💡 Calculate Tax"):
         """)
 
 # --- Guide Section ---
-with st.expander("🧾 How to Read Your Salary Slip?"):
+with st.expander("📎 How to Read Your Salary Slip?"):
     st.markdown("""
     - **Basic Pay**: Core salary used for PF & gratuity  
     - **HRA**: Tax benefit if rent is paid (40% or 50%)  
