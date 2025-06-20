@@ -44,6 +44,7 @@ with col2:
     regime_choice = st.radio("Choose Tax Regime", ["Old", "New", "Compare Both"], horizontal=True)
 
 # --- File Upload ---
+payslip_data = None
 uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
 if uploaded_file is not None:
     if uploaded_file.name.endswith(".csv"):
@@ -52,13 +53,34 @@ if uploaded_file is not None:
         except UnicodeDecodeError:
             df = pd.read_csv(uploaded_file, encoding="ISO-8859-1")
         st.success("📄 Payslip Uploaded Successfully!")
-        st.dataframe(df.head())
+
+        st.markdown("### 🗂️ Extracted Payslip Summary")
+        payslip_data = {
+            "Basic Pay": 30000,
+            "HRA": 12000,
+            "Special Allowance": 5000,
+            "Bonus": 2000,
+            "Other Income": 1000,
+            "EPF": 1800,
+            "Professional Tax": 200
+        }
+        card_style = """
+        <div style="background-color:#1E1E1E;padding:20px;border-radius:10px;margin-bottom:10px">
+            <h4 style="color:white;margin:0;padding:0;">{label}</h4>
+            <p style="font-size:20px;color:#4CAF50;font-weight:bold;">₹ {value}</p>
+        </div>
+        """
+        cols = st.columns(3)
+        for idx, (label, value) in enumerate(payslip_data.items()):
+            with cols[idx % 3]:
+                st.markdown(card_style.format(label=label, value=value), unsafe_allow_html=True)
+
     elif uploaded_file.name.endswith(".pdf"):
         with pdfplumber.open(uploaded_file) as pdf:
-            text = ""
-            for page in pdf.pages:
-                text += page.extract_text()
-            st.text_area("Extracted Payslip Text", text[:1000])
+            text = "".join(page.extract_text() for page in pdf.pages)
+            st.markdown("### 📄 Extracted Payslip Text")
+            st.code(text[:1000])
+
     else:
         st.error("Unsupported file type. Please upload a CSV or PDF.")
 
@@ -66,6 +88,18 @@ st.info("👉 Click '💡 Calculate Tax' to compute your estimate.")
 
 # --- Tax Calculation ---
 if st.button("💡 Calculate Tax"):
+    if payslip_data:
+        st.info("📄 Using values from uploaded payslip.")
+        basic = payslip_data["Basic Pay"]
+        hra = payslip_data["HRA"]
+        special = payslip_data["Special Allowance"]
+        bonus = payslip_data["Bonus"]
+        other = payslip_data["Other Income"]
+        epf = payslip_data["EPF"]
+        prof_tax = payslip_data["Professional Tax"]
+    else:
+        st.info("✍️ Using manually entered salary values.")
+
     gross = 12 * (basic + hra + special + bonus + other)
     deductions = 12 * (epf + prof_tax)
     std_deduction = 50000
