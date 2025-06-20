@@ -70,7 +70,7 @@ st.title("💰 Salary Simplified")
 st.markdown("Break down your salary, upload your payslip, compare tax regimes & get AI tips.")
 
 # --- File Upload ---
-uploaded_file = st.file_uploader("📤 Upload Payslip (PDF/Image optional)", type=["pdf", "png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("📄 Upload Payslip (PDF/Image optional)", type=["pdf", "png", "jpg", "jpeg"])
 payslip_text = ""
 
 if uploaded_file:
@@ -80,7 +80,7 @@ if uploaded_file:
         image = Image.open(uploaded_file)
         payslip_text = extract_text_from_image(image)
     st.subheader("🔍 Raw Extracted Payslip Data")
-    mask_toggle = st.toggle("🔒 Mask Sensitive Data", value=True)
+    mask_toggle = st.toggle("🔐 Mask Sensitive Data", value=True)
     if mask_toggle:
         st.markdown(f"<div class='masked'>{payslip_text[:800]}</div>", unsafe_allow_html=True)
     else:
@@ -91,7 +91,7 @@ st.markdown("### 🧾 Salary Inputs")
 col1, col2, col3 = st.columns(3)
 with col1:
     state = st.selectbox("State (for Prof. Tax)", list(PT_SLABS.keys()))
-    metro = st.checkbox("🏙️ Metro City (HRA = 50%)", value=False)
+    metro = st.checkbox("🌆️ Metro City (HRA = 50%)", value=False)
     basic = st.number_input("Basic Pay", min_value=0, value=30000)
 with col2:
     special = st.number_input("Special Allowance", min_value=0, value=5000)
@@ -182,11 +182,14 @@ if st.button("💡 Calculate Tax"):
     # --- AI Money Tips ---
     if GEMINI_API_KEY:
         with st.spinner("Getting smart money suggestions 💡"):
-            tip_model = genai.GenerativeModel("gemini-pro")
-            prompt = f"Give beginner-friendly investment & tax-saving suggestions in bullet points for someone earning ₹{take_home/12:,.0f} per month. Keep it short and helpful."
-            tips = tip_model.generate_content(prompt)
-            st.markdown("### 💡 Smart Money Tips")
-            st.markdown(tips.text)
+            try:
+                tip_model = genai.GenerativeModel("gemini-pro")
+                prompt = f"Give beginner-friendly investment & tax-saving suggestions in bullet points for someone earning ₹{take_home/12:,.0f} per month. Keep it short and helpful."
+                tips = tip_model.generate_content(prompt)
+                st.markdown("### 💡 Smart Money Tips")
+                st.markdown(tips.text)
+            except Exception as e:
+                st.error("Gemini Tips Error: Please verify API or try again later.")
 
 # --- Salary Slip Help ---
 st.markdown("---")
