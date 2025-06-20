@@ -144,6 +144,7 @@ if st.button("💡 Calculate Tax"):
         tax_old_val = tax_old(taxable_income)
         tax_new_val = tax_new(gross)
         better = "Old" if tax_old_val < tax_new_val else "New"
+        tax = min(tax_old_val, tax_new_val)  # ✅ Fix for NameError
         st.info(f"Old: ₹{tax_old_val:,.0f}, New: ₹{tax_new_val:,.0f}")
         st.success(f"✅ Better Regime: {better}")
 
