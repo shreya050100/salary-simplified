@@ -48,4 +48,5 @@ with st.container():
         regime_choice = st.radio("Choose Tax Regime", ["Old", "New", "Compare Both"], horizontal=True)
 
 # --- File Upload ---
-uploaded_file = st.file_uploader("📤 Upload Salary Slip (.c
+uploaded_file = st.file_uploader("📤 Upload Salary Slip (.csv or .pdf)", type=["csv", "pdf"])
+
